@@ -1,0 +1,34 @@
+{
+  "name": "ai-practice",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/huantran2605/ai-practice.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bin": {
+    "bst": "./dist/src/index.js"
+  },
+  "bugs": {
+    "url": "https://github.com/huantran2605/ai-practice/issues"
+  },
+  "homepage": "https://github.com/huantran2605/ai-practice#readme",
+  "dependencies": {
+    "chalk": "^5.6.2",
+    "commander": "^14.0.3",
+    "figures": "^6.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^6.0.2"
+  }
+}
