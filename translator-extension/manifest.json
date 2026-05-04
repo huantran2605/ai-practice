@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "AI Translator EN→VI",
+  "version": "1.0.0",
+  "description": "Dịch Anh → Việt bằng AI local (Ollama) hoặc cloud (Google Gemini). Bôi đen hoặc double-click để dịch.",
+  "permissions": ["activeTab", "storage"],
+  "host_permissions": ["http://localhost:11434/*", "https://generativelanguage.googleapis.com/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "css": ["content.css"]
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon128.png",
+      "48": "icons/icon128.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon128.png",
+    "48": "icons/icon128.png",
+    "128": "icons/icon128.png"
+  }
+}

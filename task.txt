@@ -1,0 +1,7 @@
+tôi muốn làm dự án về 1 extension trên trình duyệt microsoft edge hoặc chrome.
+extension đó hỗ trợ dịch từ tiếng anh sang tiếng việt khi user bôi đen 1 câu, 1 đoạn văn, hay double click.
+
+dùng AI để hỗ trợ dịch, dùng ollama chạy local với model qwen2.5
+
+Phương án đó có khả thi hay không? bạn nghĩ sao, có góp ý gì không?
+và hãy hỏi tôi các câu hỏi để làm rõ vấn đề nếu bạn thắc mắc
