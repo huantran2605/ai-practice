@@ -223,6 +223,262 @@
 
   // Close on Escape
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") { removePopup(); removeBtn(); }
+    if (e.key === "Escape") { removePopup(); removeBtn(); closeChatPanel(); }
   });
+
+  // ========== Q&A CHAT PANEL ==========
+
+  const ICON_CHAT = `<svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>`;
+  const ICON_SEND = `<svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>`;
+  const ICON_NEW_CHAT = `<svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>`;
+
+  let chatPanel = null;
+  let chatToggle = null;
+  let chatMessages = [];
+  let pageText = null;
+  let chatOpen = false;
+
+  function extractPageText() {
+    const article = document.querySelector("article") || document.querySelector("main") || document.querySelector('[role="main"]');
+    let text = (article || document.body).innerText;
+    text = text.replace(/\n{3,}/g, "\n\n").trim();
+    return text;
+  }
+
+  function getChatStorageKey() {
+    return `chat_${location.hostname}${location.pathname}`;
+  }
+
+  function saveChatHistory() {
+    if (!isExtensionValid()) return;
+    try {
+      chrome.runtime.sendMessage({
+        action: "saveChatHistory",
+        key: getChatStorageKey(),
+        messages: chatMessages,
+      });
+    } catch (e) { /* ignore */ }
+  }
+
+  function loadChatHistory(callback) {
+    if (!isExtensionValid()) { callback([]); return; }
+    try {
+      chrome.runtime.sendMessage(
+        { action: "loadChatHistory", key: getChatStorageKey() },
+        (response) => {
+          if (chrome.runtime.lastError) { callback([]); return; }
+          callback(response?.messages || []);
+        }
+      );
+    } catch (e) { callback([]); }
+  }
+
+  function createChatToggle() {
+    if (chatToggle) return;
+    const btn = document.createElement("button");
+    btn.className = "ai-chat-toggle";
+    btn.innerHTML = ICON_CHAT;
+    btn.title = "Chat với nội dung trang";
+    btn.addEventListener("click", () => {
+      if (chatOpen) { closeChatPanel(); } else { openChatPanel(); }
+    });
+    document.body.appendChild(btn);
+    chatToggle = btn;
+  }
+
+  function openChatPanel() {
+    if (chatPanel) return;
+    chatOpen = true;
+    chatToggle?.classList.add("active");
+
+    if (!pageText) { pageText = extractPageText(); }
+
+    const panel = document.createElement("div");
+    panel.className = "ai-chat-panel";
+    panel.innerHTML = `
+      <div class="ai-chat-header">
+        <div class="ai-chat-header-left">
+          <span class="ai-chat-title">💬 Chat với trang</span>
+        </div>
+        <div class="ai-chat-header-actions">
+          <button class="ai-chat-new" title="Cuộc trò chuyện mới">${ICON_NEW_CHAT}</button>
+          <button class="ai-chat-close" title="Đóng">✕</button>
+        </div>
+      </div>
+      <div class="ai-chat-body">
+        <div class="ai-chat-messages" id="ai-chat-messages">
+          <div class="ai-chat-welcome">
+            <div class="ai-chat-welcome-icon">🤖</div>
+            <div class="ai-chat-welcome-text">Xin chào! Tôi có thể giúp bạn tìm hiểu nội dung trang này. Hãy đặt câu hỏi bất kỳ.</div>
+          </div>
+        </div>
+      </div>
+      <div class="ai-chat-input-area">
+        <textarea class="ai-chat-input" placeholder="Hỏi về nội dung trang..." rows="1"></textarea>
+        <button class="ai-chat-send" title="Gửi">${ICON_SEND}</button>
+      </div>
+    `;
+
+    document.body.appendChild(panel);
+    chatPanel = panel;
+
+    panel.querySelector(".ai-chat-close").addEventListener("click", closeChatPanel);
+    panel.querySelector(".ai-chat-new").addEventListener("click", startNewChat);
+
+    const input = panel.querySelector(".ai-chat-input");
+    const sendBtn = panel.querySelector(".ai-chat-send");
+
+    sendBtn.addEventListener("click", () => sendChatMessage(input));
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendChatMessage(input);
+      }
+    });
+
+    // Auto-resize textarea
+    input.addEventListener("input", () => {
+      input.style.height = "auto";
+      input.style.height = Math.min(input.scrollHeight, 100) + "px";
+    });
+
+    // Load saved history
+    loadChatHistory((messages) => {
+      if (messages.length > 0) {
+        chatMessages = messages;
+        renderAllMessages();
+      }
+    });
+
+    input.focus();
+  }
+
+  function closeChatPanel() {
+    if (chatPanel) {
+      chatPanel.classList.add("ai-chat-panel--closing");
+      const panelRef = chatPanel;
+      setTimeout(() => { panelRef.remove(); }, 200);
+      chatPanel = null;
+    }
+    chatOpen = false;
+    chatToggle?.classList.remove("active");
+  }
+
+  function startNewChat() {
+    chatMessages = [];
+    saveChatHistory();
+    pageText = extractPageText();
+
+    const messagesEl = chatPanel?.querySelector(".ai-chat-messages");
+    if (messagesEl) {
+      messagesEl.innerHTML = `
+        <div class="ai-chat-welcome">
+          <div class="ai-chat-welcome-icon">🤖</div>
+          <div class="ai-chat-welcome-text">Cuộc trò chuyện mới! Hãy đặt câu hỏi về nội dung trang.</div>
+        </div>
+      `;
+    }
+  }
+
+  function renderAllMessages() {
+    const messagesEl = chatPanel?.querySelector(".ai-chat-messages");
+    if (!messagesEl) return;
+    messagesEl.innerHTML = "";
+    chatMessages.forEach((msg) => appendMessageBubble(msg.role, msg.content, false));
+    scrollToBottom();
+  }
+
+  function appendMessageBubble(role, content, animate = true) {
+    const messagesEl = chatPanel?.querySelector(".ai-chat-messages");
+    if (!messagesEl) return;
+
+    const welcome = messagesEl.querySelector(".ai-chat-welcome");
+    if (welcome) welcome.remove();
+
+    const bubble = document.createElement("div");
+    bubble.className = `ai-chat-bubble ai-chat-bubble--${role === "user" ? "user" : "ai"}`;
+    if (animate) bubble.classList.add("ai-chat-bubble--animate");
+
+    let html = escapeHtml(content);
+    if (role === "assistant") {
+      html = html.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+      html = html.replace(/\n/g, "<br>");
+    }
+
+    bubble.innerHTML = `<div class="ai-chat-bubble-content">${html}</div>`;
+    messagesEl.appendChild(bubble);
+    scrollToBottom();
+    return bubble;
+  }
+
+  function showTypingIndicator() {
+    const messagesEl = chatPanel?.querySelector(".ai-chat-messages");
+    if (!messagesEl) return;
+    const typing = document.createElement("div");
+    typing.className = "ai-chat-typing";
+    typing.id = "ai-chat-typing";
+    typing.innerHTML = `<div class="ai-chat-dots"><span></span><span></span><span></span></div><span class="ai-chat-typing-text">Đang suy nghĩ...</span>`;
+    messagesEl.appendChild(typing);
+    scrollToBottom();
+  }
+
+  function removeTypingIndicator() {
+    chatPanel?.querySelector("#ai-chat-typing")?.remove();
+  }
+
+  function scrollToBottom() {
+    const messagesEl = chatPanel?.querySelector(".ai-chat-messages");
+    if (messagesEl) {
+      requestAnimationFrame(() => { messagesEl.scrollTop = messagesEl.scrollHeight; });
+    }
+  }
+
+  function sendChatMessage(inputEl) {
+    const text = inputEl.value.trim();
+    if (!text) return;
+
+    if (!isExtensionValid()) {
+      appendMessageBubble("assistant", "Extension đã được reload. Hãy refresh trang (F5) để tiếp tục sử dụng.");
+      return;
+    }
+
+    inputEl.value = "";
+    inputEl.style.height = "auto";
+
+    chatMessages.push({ role: "user", content: text });
+    appendMessageBubble("user", text);
+    showTypingIndicator();
+
+    try {
+      chrome.runtime.sendMessage(
+        { action: "askPage", pageContent: pageText, messages: chatMessages },
+        (response) => {
+          removeTypingIndicator();
+          if (chrome.runtime.lastError) {
+            const errMsg = "Extension đã được reload. Hãy refresh trang (F5).";
+            chatMessages.push({ role: "assistant", content: errMsg });
+            appendMessageBubble("assistant", errMsg);
+            return;
+          }
+          if (response?.success) {
+            chatMessages.push({ role: "assistant", content: response.answer });
+            appendMessageBubble("assistant", response.answer);
+          } else {
+            const errMsg = response?.error || "Không thể kết nối AI. Kiểm tra cài đặt trong Settings.";
+            chatMessages.push({ role: "assistant", content: errMsg });
+            appendMessageBubble("assistant", errMsg);
+          }
+          saveChatHistory();
+        }
+      );
+    } catch (err) {
+      removeTypingIndicator();
+      const errMsg = "Extension đã được reload. Hãy refresh trang (F5).";
+      chatMessages.push({ role: "assistant", content: errMsg });
+      appendMessageBubble("assistant", errMsg);
+    }
+  }
+
+  // Initialize chat toggle button
+  createChatToggle();
 })();
