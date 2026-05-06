@@ -237,12 +237,168 @@
   let chatMessages = [];
   let pageText = null;
   let chatOpen = false;
+  let chatPanelWidth = 400;
+  let chatPanelHeight = 520;
 
   function extractPageText() {
     const article = document.querySelector("article") || document.querySelector("main") || document.querySelector('[role="main"]');
     let text = (article || document.body).innerText;
     text = text.replace(/\n{3,}/g, "\n\n").trim();
     return text;
+  }
+
+  function renderMarkdown(text) {
+    if (!text) return "";
+    let html = escapeHtml(text);
+
+    // Code blocks: ```code```
+    html = html.replace(/```([\s\S]*?)```/g, '<pre class="ai-chat-code-block"><code>$1</code></pre>');
+
+    // Inline code: `code`
+    html = html.replace(/`([^`]+)`/g, '<code class="ai-chat-inline-code">$1</code>');
+
+    // Bold: **text**
+    html = html.replace(/\*\*([^\*]+)\*\*/g, '<strong>$1</strong>');
+
+    // Italic: *text*
+    html = html.replace(/\*([^\*]+)\*/g, '<em>$1</em>');
+
+    // Headings
+    html = html.replace(/^### (.*$)/gm, '<h3>$1</h3>');
+    html = html.replace(/^## (.*$)/gm, '<h2>$1</h2>');
+    html = html.replace(/^# (.*$)/gm, '<h1>$1</h1>');
+
+    // Lists
+    html = html.replace(/^\s*[-*]\s+(.*)$/gm, '<ul><li>$1</li></ul>');
+    html = html.replace(/<\/ul>\n<ul>/g, ''); 
+    html = html.replace(/^\s*\d+\.\s+(.*)$/gm, '<ol><li>$1</li></ol>');
+    html = html.replace(/<\/ol>\n<ol>/g, '');
+
+    // Line breaks
+    html = html.replace(/\n/g, '<br>');
+
+    return html;
+  }
+
+  function getSuggestedQuestions() {
+    const suggestions = [
+      "Tóm tắt nội dung chính của trang này",
+      "Các điểm quan trọng nhất là gì?",
+      "Giải thích ngắn gọn trang này nói về điều gì"
+    ];
+
+    if (location.hostname.includes("github.com")) {
+      suggestions.push("Làm thế nào để cài đặt project này?");
+    } else if (location.hostname.includes("stackoverflow.com")) {
+      suggestions.push("Giải pháp được chấp nhận là gì?");
+    }
+
+    return suggestions;
+  }
+
+  function renderSuggestions() {
+    const messagesEl = chatPanel?.querySelector(".ai-chat-messages");
+    if (!messagesEl) return;
+
+    chatPanel.querySelector(".ai-chat-suggestions")?.remove();
+
+    const suggestions = getSuggestedQuestions();
+    const container = document.createElement("div");
+    container.className = "ai-chat-suggestions";
+    
+    suggestions.forEach(text => {
+      const chip = document.createElement("button");
+      chip.className = "ai-chat-suggestion-chip";
+      chip.textContent = text;
+      chip.addEventListener("click", () => {
+        const input = chatPanel.querySelector(".ai-chat-input");
+        input.value = text;
+        sendChatMessage(input);
+        container.remove();
+      });
+      container.appendChild(chip);
+    });
+
+    messagesEl.appendChild(container);
+    scrollToBottom();
+  }
+
+  function makeResizable(panel) {
+    const handleT = document.createElement("div");
+    handleT.className = "ai-chat-resize-handle ai-chat-resize-handle-t";
+    const handleL = document.createElement("div");
+    handleL.className = "ai-chat-resize-handle ai-chat-resize-handle-l";
+    const handleTL = document.createElement("div");
+    handleTL.className = "ai-chat-resize-handle ai-chat-resize-handle-tl";
+
+    panel.appendChild(handleT);
+    panel.appendChild(handleL);
+    panel.appendChild(handleTL);
+
+    let startX, startY, startW, startH;
+
+    function onMouseDown(e, type) {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      startX = e.clientX;
+      startY = e.clientY;
+      startW = panel.offsetWidth;
+      startH = panel.offsetHeight;
+
+      document.body.style.cursor = window.getComputedStyle(e.target).cursor;
+      panel.classList.add("ai-chat-resizing");
+
+      function onMouseMove(moveEvent) {
+        if (type.includes("l")) {
+          const newWidth = startW + (startX - moveEvent.clientX);
+          if (newWidth > 320 && newWidth < 900) {
+            panel.style.width = newWidth + "px";
+            chatPanelWidth = newWidth;
+          }
+        }
+        if (type.includes("t")) {
+          const newHeight = startH + (startY - moveEvent.clientY);
+          if (newHeight > 350 && newHeight < window.innerHeight - 100) {
+            panel.style.height = newHeight + "px";
+            chatPanelHeight = newHeight;
+          }
+        }
+      }
+
+      function onMouseUp() {
+        document.removeEventListener("mousemove", onMouseMove);
+        document.removeEventListener("mouseup", onMouseUp);
+        document.body.style.cursor = "";
+        panel.classList.remove("ai-chat-resizing");
+        savePanelSize();
+      }
+
+      document.addEventListener("mousemove", onMouseMove);
+      document.addEventListener("mouseup", onMouseUp);
+    }
+
+    handleT.addEventListener("mousedown", (e) => onMouseDown(e, "t"));
+    handleL.addEventListener("mousedown", (e) => onMouseDown(e, "l"));
+    handleTL.addEventListener("mousedown", (e) => onMouseDown(e, "tl"));
+  }
+
+  function savePanelSize() {
+    if (!isExtensionValid()) return;
+    try {
+      chrome.storage.local.set({ chatPanelWidth, chatPanelHeight });
+    } catch (e) { /* ignore */ }
+  }
+
+  function loadPanelSize(callback) {
+    if (!isExtensionValid()) { callback(); return; }
+    try {
+      chrome.storage.local.get(["chatPanelWidth", "chatPanelHeight"], (res) => {
+        if (res.chatPanelWidth) chatPanelWidth = res.chatPanelWidth;
+        if (res.chatPanelHeight) chatPanelHeight = res.chatPanelHeight;
+        callback();
+      });
+    } catch (e) { callback(); }
   }
 
   function getChatStorageKey() {
@@ -293,64 +449,72 @@
 
     if (!pageText) { pageText = extractPageText(); }
 
-    const panel = document.createElement("div");
-    panel.className = "ai-chat-panel";
-    panel.innerHTML = `
-      <div class="ai-chat-header">
-        <div class="ai-chat-header-left">
-          <span class="ai-chat-title">💬 Chat với trang</span>
-        </div>
-        <div class="ai-chat-header-actions">
-          <button class="ai-chat-new" title="Cuộc trò chuyện mới">${ICON_NEW_CHAT}</button>
-          <button class="ai-chat-close" title="Đóng">✕</button>
-        </div>
-      </div>
-      <div class="ai-chat-body">
-        <div class="ai-chat-messages" id="ai-chat-messages">
-          <div class="ai-chat-welcome">
-            <div class="ai-chat-welcome-icon">🤖</div>
-            <div class="ai-chat-welcome-text">Xin chào! Tôi có thể giúp bạn tìm hiểu nội dung trang này. Hãy đặt câu hỏi bất kỳ.</div>
+    loadPanelSize(() => {
+      const panel = document.createElement("div");
+      panel.className = "ai-chat-panel";
+      panel.style.width = chatPanelWidth + "px";
+      panel.style.height = chatPanelHeight + "px";
+      panel.innerHTML = `
+        <div class="ai-chat-header">
+          <div class="ai-chat-header-left">
+            <span class="ai-chat-title">💬 Chat với trang</span>
+          </div>
+          <div class="ai-chat-header-actions">
+            <button class="ai-chat-new" title="Cuộc trò chuyện mới">${ICON_NEW_CHAT}</button>
+            <button class="ai-chat-close" title="Đóng">✕</button>
           </div>
         </div>
-      </div>
-      <div class="ai-chat-input-area">
-        <textarea class="ai-chat-input" placeholder="Hỏi về nội dung trang..." rows="1"></textarea>
-        <button class="ai-chat-send" title="Gửi">${ICON_SEND}</button>
-      </div>
-    `;
+        <div class="ai-chat-body">
+          <div class="ai-chat-messages" id="ai-chat-messages">
+            <div class="ai-chat-welcome">
+              <div class="ai-chat-welcome-icon">🤖</div>
+              <div class="ai-chat-welcome-text">Xin chào! Tôi có thể giúp bạn tìm hiểu nội dung trang này. Hãy đặt câu hỏi bất kỳ.</div>
+            </div>
+          </div>
+        </div>
+        <div class="ai-chat-input-area">
+          <textarea class="ai-chat-input" placeholder="Hỏi về nội dung trang..." rows="1"></textarea>
+          <button class="ai-chat-send" title="Gửi">${ICON_SEND}</button>
+        </div>
+      `;
 
-    document.body.appendChild(panel);
-    chatPanel = panel;
+      document.body.appendChild(panel);
+      chatPanel = panel;
 
-    panel.querySelector(".ai-chat-close").addEventListener("click", closeChatPanel);
-    panel.querySelector(".ai-chat-new").addEventListener("click", startNewChat);
+      makeResizable(panel);
 
-    const input = panel.querySelector(".ai-chat-input");
-    const sendBtn = panel.querySelector(".ai-chat-send");
+      panel.querySelector(".ai-chat-close").addEventListener("click", closeChatPanel);
+      panel.querySelector(".ai-chat-new").addEventListener("click", startNewChat);
 
-    sendBtn.addEventListener("click", () => sendChatMessage(input));
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        sendChatMessage(input);
-      }
+      const input = panel.querySelector(".ai-chat-input");
+      const sendBtn = panel.querySelector(".ai-chat-send");
+
+      sendBtn.addEventListener("click", () => sendChatMessage(input));
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          sendChatMessage(input);
+        }
+      });
+
+      // Auto-resize textarea
+      input.addEventListener("input", () => {
+        input.style.height = "auto";
+        input.style.height = Math.min(input.scrollHeight, 100) + "px";
+      });
+
+      // Load saved history
+      loadChatHistory((messages) => {
+        if (messages.length > 0) {
+          chatMessages = messages;
+          renderAllMessages();
+        } else {
+          renderSuggestions();
+        }
+      });
+
+      input.focus();
     });
-
-    // Auto-resize textarea
-    input.addEventListener("input", () => {
-      input.style.height = "auto";
-      input.style.height = Math.min(input.scrollHeight, 100) + "px";
-    });
-
-    // Load saved history
-    loadChatHistory((messages) => {
-      if (messages.length > 0) {
-        chatMessages = messages;
-        renderAllMessages();
-      }
-    });
-
-    input.focus();
   }
 
   function closeChatPanel() {
@@ -377,6 +541,7 @@
           <div class="ai-chat-welcome-text">Cuộc trò chuyện mới! Hãy đặt câu hỏi về nội dung trang.</div>
         </div>
       `;
+      renderSuggestions();
     }
   }
 
@@ -399,11 +564,7 @@
     bubble.className = `ai-chat-bubble ai-chat-bubble--${role === "user" ? "user" : "ai"}`;
     if (animate) bubble.classList.add("ai-chat-bubble--animate");
 
-    let html = escapeHtml(content);
-    if (role === "assistant") {
-      html = html.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
-      html = html.replace(/\n/g, "<br>");
-    }
+    let html = role === "assistant" ? renderMarkdown(content) : escapeHtml(content);
 
     bubble.innerHTML = `<div class="ai-chat-bubble-content">${html}</div>`;
     messagesEl.appendChild(bubble);
