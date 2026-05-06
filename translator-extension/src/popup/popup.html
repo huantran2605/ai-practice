@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Translator EN→VI</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <!-- Header -->
+    <div class="popup-header">
+      <div class="popup-logo">
+        <div class="popup-logo-icon">
+          <svg viewBox="0 0 24 24" fill="white"><path d="M12.87 15.07l-2.54-2.51.03-.03A17.52 17.52 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z"/></svg>
+        </div>
+        <div>
+          <h1 class="popup-title">AI Translator</h1>
+          <p class="popup-subtitle">English → Tiếng Việt</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings: Provider Switch -->
+    <div class="popup-settings">
+      <h3>AI Provider</h3>
+      <div class="provider-switch">
+        <button class="provider-btn active" id="btn-local" data-provider="local">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M20 18c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z"/></svg>
+          Local (Ollama)
+        </button>
+        <button class="provider-btn" id="btn-cloud" data-provider="cloud">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/></svg>
+          Cloud (Gemini)
+        </button>
+      </div>
+
+      <!-- API Key (shown only for cloud) -->
+      <div class="api-key-section hidden" id="api-key-section">
+        <label class="api-key-label" for="api-key-input">Google Gemini API Key</label>
+        <div class="api-key-row">
+          <input type="password" id="api-key-input" class="api-key-input" placeholder="Nhập API Key..." spellcheck="false" autocomplete="off">
+          <button class="api-key-toggle" id="api-key-toggle" title="Hiện/Ẩn">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" id="eye-icon"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
+          </button>
+        </div>
+        <p class="api-key-hint">Lấy API Key miễn phí tại <a href="https://aistudio.google.com/apikey" target="_blank" id="link-aistudio">Google AI Studio</a></p>
+      </div>
+
+      <!-- Save feedback -->
+      <div class="save-toast hidden" id="save-toast">✓ Đã lưu</div>
+    </div>
+
+    <!-- Status -->
+    <div class="popup-status" id="status">
+      <div class="status-row" id="ollama-row">
+        <span class="status-label">Ollama</span>
+        <span class="status-badge" id="ollama-status">
+          <span class="status-dot"></span>
+          <span class="status-text">Đang kiểm tra...</span>
+        </span>
+      </div>
+      <div class="status-row" id="model-row">
+        <span class="status-label">Model</span>
+        <span class="status-badge" id="model-status">
+          <span class="status-dot"></span>
+          <span class="status-text">—</span>
+        </span>
+      </div>
+    </div>
+
+    <!-- Instructions -->
+    <div class="popup-info">
+      <h3>Cách sử dụng</h3>
+      <ul>
+        <li><strong>Bôi đen</strong> văn bản → nhấn nút dịch</li>
+        <li><strong>Double-click</strong> từ → tự động dịch</li>
+        <li>Nhấn <strong>🔊 Phát âm</strong> để nghe</li>
+        <li>Nhấn <strong>💬 Chat</strong> góc phải dưới → hỏi đáp về nội dung trang</li>
+      </ul>
+    </div>
+
+    <!-- Footer -->
+    <div class="popup-footer" id="footer-text">
+      <span>Powered by Ollama + Qwen2.5</span>
+    </div>
+  </div>
+  <script src="../popup.js" type="module"></script>
+</body>
+</html>

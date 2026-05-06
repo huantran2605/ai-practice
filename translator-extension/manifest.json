@@ -2,21 +2,25 @@
   "manifest_version": 3,
   "name": "AI Translator EN→VI",
   "version": "1.0.0",
-  "description": "Dịch Anh → Việt bằng AI local (Ollama) hoặc cloud (Google Gemini). Bôi đen hoặc double-click để dịch.",
-  "permissions": ["activeTab", "storage"],
+  "description": "Dịch Anh → Việt bằng AI local (Ollama) hoặc cloud (Google Gemini). Hỗ trợ RAG cho Q&A.",
+  "permissions": ["activeTab", "storage", "unlimitedStorage"],
   "host_permissions": ["http://localhost:11434/*", "https://generativelanguage.googleapis.com/*"],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "src/background.js",
+    "type": "module"
   },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content.js"],
-      "css": ["content.css"]
+      "js": ["src/content.js"],
+      "css": ["src/content.css"]
     }
   ],
   "action": {
-    "default_popup": "popup.html",
+    "default_popup": "src/popup/popup.html",
     "default_icon": {
       "16": "icons/icon128.png",
       "48": "icons/icon128.png",
@@ -27,5 +31,11 @@
     "16": "icons/icon128.png",
     "48": "icons/icon128.png",
     "128": "icons/icon128.png"
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["assets/*", "wasm/*"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }
