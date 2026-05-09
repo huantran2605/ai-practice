@@ -484,3 +484,50 @@
   height: 20px !important;
   cursor: nwse-resize !important;
 }
+
+/* ========== AI THOUGHTS / REASONING ========== */
+.ai-translator-thought {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 10px !important;
+  padding: 10px !important;
+  margin-bottom: 12px !important;
+  font-size: 13px !important;
+}
+.ai-translator-thought-label {
+  display: block !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  color: #94a3b8 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.5px !important;
+  margin-bottom: 6px !important;
+}
+.ai-translator-thought-text {
+  color: #94a3b8 !important;
+  font-style: italic !important;
+  line-height: 1.5 !important;
+  white-space: pre-wrap !important;
+}
+
+.ai-chat-bubble-thought {
+  background: rgba(0, 0, 0, 0.2) !important;
+  border-left: 3px solid rgba(99, 102, 241, 0.3) !important;
+  margin-bottom: 10px !important;
+  padding: 8px 12px !important;
+  border-radius: 4px 12px 12px 4px !important;
+}
+.ai-chat-thought-header {
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  color: #6366f1 !important;
+  text-transform: uppercase !important;
+  margin-bottom: 4px !important;
+}
+.ai-chat-thought-content {
+  font-size: 13px !important;
+  color: #94a3b8 !important;
+  font-style: italic !important;
+  line-height: 1.5 !important;
+  white-space: pre-wrap !important;
+}

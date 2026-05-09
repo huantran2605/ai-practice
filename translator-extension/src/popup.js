@@ -6,8 +6,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnLocal = document.getElementById("btn-local");
   const btnCloud = document.getElementById("btn-cloud");
   const apiKeySection = document.getElementById("api-key-section");
+  const ollamaSettingsSection = document.getElementById("ollama-settings-section");
   const apiKeyInput = document.getElementById("api-key-input");
   const apiKeyToggle = document.getElementById("api-key-toggle");
+  const ollamaModelSelect = document.getElementById("ollama-model-select");
+  const refreshModelsBtn = document.getElementById("refresh-models-btn");
   const saveToast = document.getElementById("save-toast");
   const ollamaStatus = document.getElementById("ollama-status");
   const modelStatus = document.getElementById("model-status");
@@ -16,14 +19,20 @@ document.addEventListener("DOMContentLoaded", () => {
   const footerText = document.getElementById("footer-text");
 
   let currentProvider = "local";
+  let currentModel = "";
   let saveTimeout = null;
 
   // --- Load saved settings ---
-  chrome.storage.local.get({ provider: "local", geminiApiKey: "" }, (items) => {
+  chrome.storage.local.get({ provider: "local", geminiApiKey: "", ollamaModel: "" }, (items) => {
     currentProvider = items.provider;
+    currentModel = items.ollamaModel;
     apiKeyInput.value = items.geminiApiKey || "";
     updateProviderUI(currentProvider);
     runHealthCheck();
+    
+    if (currentProvider === "local") {
+      fetchOllamaModels();
+    }
   });
 
   // --- Provider buttons ---
@@ -43,15 +52,66 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (provider === "cloud") {
       apiKeySection.classList.remove("hidden");
+      ollamaSettingsSection.classList.add("hidden");
       ollamaRow.style.display = "none";
       modelRow.querySelector(".status-label").textContent = "Gemini";
       footerText.innerHTML = "<span>Powered by Google Gemini</span>";
     } else {
       apiKeySection.classList.add("hidden");
+      ollamaSettingsSection.classList.remove("hidden");
       ollamaRow.style.display = "";
       modelRow.querySelector(".status-label").textContent = "Model";
-      footerText.innerHTML = "<span>Powered by Ollama + Qwen2.5</span>";
+      const modelShort = currentModel ? currentModel.split(':')[0] : "Qwen2.5";
+      footerText.innerHTML = `<span>Powered by Ollama + ${modelShort}</span>`;
+      fetchOllamaModels();
     }
+  }
+
+  // --- Ollama Model Selection ---
+  ollamaModelSelect.addEventListener("change", () => {
+    currentModel = ollamaModelSelect.value;
+    saveSettings();
+    runHealthCheck();
+    
+    const modelShort = currentModel ? currentModel.split(':')[0] : "Qwen2.5";
+    footerText.innerHTML = `<span>Powered by Ollama + ${modelShort}</span>`;
+  });
+
+  refreshModelsBtn.addEventListener("click", () => {
+    fetchOllamaModels();
+  });
+
+  function fetchOllamaModels() {
+    refreshModelsBtn.classList.add("rotating");
+    chrome.runtime.sendMessage({ action: "getOllamaModels" }, (response) => {
+      refreshModelsBtn.classList.remove("rotating");
+      
+      if (chrome.runtime.lastError || !response || !response.ollamaRunning) {
+        ollamaModelSelect.innerHTML = '<option value="">Ollama offline</option>';
+        ollamaModelSelect.disabled = true;
+        return;
+      }
+
+      ollamaModelSelect.disabled = false;
+      const models = response.availableModels || [];
+      
+      if (models.length === 0) {
+        ollamaModelSelect.innerHTML = '<option value="">Không tìm thấy model nào</option>';
+        return;
+      }
+
+      // Populate dropdown
+      ollamaModelSelect.innerHTML = models.map(m => 
+        `<option value="${m}" ${m === currentModel ? 'selected' : ''}>${m}</option>`
+      ).join('');
+
+      // If currentModel is empty or not in the list, select the first one and save
+      if (!currentModel || !models.includes(currentModel)) {
+        currentModel = models[0];
+        ollamaModelSelect.value = currentModel;
+        saveSettings();
+      }
+    });
   }
 
   // --- API Key input (auto-save on change) ---
@@ -69,7 +129,11 @@ document.addEventListener("DOMContentLoaded", () => {
   // --- Save settings ---
   function saveSettings() {
     chrome.storage.local.set(
-      { provider: currentProvider, geminiApiKey: apiKeyInput.value.trim() },
+      { 
+        provider: currentProvider, 
+        geminiApiKey: apiKeyInput.value.trim(),
+        ollamaModel: currentModel
+      },
       () => {
         showToast();
         if (currentProvider === "cloud") runHealthCheck();
@@ -108,7 +172,7 @@ document.addEventListener("DOMContentLoaded", () => {
       // Model / Gemini status based on current provider
       if (currentProvider === "local") {
         if (response.modelAvailable) {
-          setStatus(modelStatus, "online", "qwen2.5:7b ✓");
+          setStatus(modelStatus, "online", `${response.currentModel} ✓`);
         } else if (response.ollamaRunning) {
           setStatus(modelStatus, "offline", "Chưa tải model");
         } else {

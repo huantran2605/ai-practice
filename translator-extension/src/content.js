@@ -131,14 +131,41 @@
     return el;
   }
 
-  function updatePopupResult(translatedText, error) {
+  function updatePopupResult(text, error, isIncremental = false, type = "content") {
     if (!popup) return;
     const resultContainer = popup.querySelector(".ai-translator-result");
     if (!resultContainer) return;
+    
     if (error) {
       resultContainer.innerHTML = `<div class="ai-translator-error"><span class="ai-translator-error-icon">⚠️</span><span class="ai-translator-error-msg">${escapeHtml(error)}</span></div>`;
     } else {
-      resultContainer.innerHTML = `<div class="ai-translator-text">${escapeHtml(translatedText)}</div>`;
+      if (type === "thought") {
+        let thoughtEl = resultContainer.querySelector(".ai-translator-thought");
+        if (!thoughtEl) {
+          const div = document.createElement("div");
+          div.className = "ai-translator-thought";
+          div.innerHTML = `<span class="ai-translator-thought-label">🤔 Thinking...</span><div class="ai-translator-thought-text"></div>`;
+          resultContainer.prepend(div);
+          thoughtEl = div.querySelector(".ai-translator-thought-text");
+        }
+        thoughtEl.textContent += text;
+        return;
+      }
+
+      let textEl = resultContainer.querySelector(".ai-translator-text");
+      if (!textEl) {
+        if (!isIncremental) resultContainer.innerHTML = "";
+        const div = document.createElement("div");
+        div.className = "ai-translator-text";
+        resultContainer.appendChild(div);
+        textEl = div;
+      }
+      
+      if (isIncremental) {
+        textEl.textContent += text;
+      } else {
+        textEl.textContent = text;
+      }
     }
   }
 
@@ -152,19 +179,43 @@
       return;
     }
     showPopup(x, y, text, null, null);
+    
     try {
-      chrome.runtime.sendMessage({ action: "translate", text }, (response) => {
-        if (chrome.runtime.lastError) {
-          updatePopupResult(null, "Extension đã được reload. Hãy refresh trang (F5).");
-          return;
-        }
-        if (response && response.success) {
-          updatePopupResult(response.translation, null);
-        } else {
-          updatePopupResult(null, response?.error || "Không thể kết nối AI.");
+      const port = chrome.runtime.connect({ name: "ai-stream" });
+      let hasReceivedData = false;
+      let fullContent = "";
+      let hasError = false;
+
+      port.onMessage.addListener((msg) => {
+        if (msg.action === "chunk") {
+          if (!hasReceivedData) {
+            hasReceivedData = true;
+            const resultContainer = popup.querySelector(".ai-translator-result");
+            if (resultContainer) {
+              const loading = resultContainer.querySelector(".ai-translator-loading");
+              if (loading) loading.remove();
+            }
+          }
+          if (msg.type === "content") fullContent += msg.chunk;
+          updatePopupResult(msg.chunk, null, true, msg.type);
+        } else if (msg.action === "error") {
+          hasError = true;
+          updatePopupResult(null, msg.error);
+        } else if (msg.action === "done") {
+          port.disconnect();
         }
       });
-    } catch (err) { updatePopupResult(null, "Extension đã được reload."); }
+
+      port.postMessage({ action: "translate", text });
+
+      port.onDisconnect.addListener(() => {
+        if (!hasReceivedData && !hasError) {
+          updatePopupResult(null, "Không thể kết nối AI. Hãy kiểm tra Ollama hoặc API Key.");
+        }
+      });
+    } catch (err) { 
+      updatePopupResult(null, "Lỗi kết nối extension."); 
+    }
   }
 
   // --- Event Listeners ---
@@ -452,13 +503,20 @@
 
   function appendBubble(role, content, animate = true) {
     const el = chatPanel?.querySelector(".ai-chat-messages");
-    if (!el) return;
+    if (!el) return null;
     el.querySelector(".ai-chat-welcome")?.remove();
     const b = document.createElement("div");
     b.className = `ai-chat-bubble ai-chat-bubble--${role === "user" ? "user" : "ai"}`;
     if (animate) b.classList.add("ai-chat-bubble--animate");
-    b.innerHTML = `<div class="ai-chat-bubble-content">${role === "assistant" ? renderMarkdown(content) : escapeHtml(content)}</div>`;
+    b.innerHTML = `
+      <div class="ai-chat-bubble-thought hidden">
+        <div class="ai-chat-thought-header">💡 Reasoning...</div>
+        <div class="ai-chat-thought-content"></div>
+      </div>
+      <div class="ai-chat-bubble-content">${role === "assistant" ? renderMarkdown(content) : escapeHtml(content)}</div>
+    `;
     el.appendChild(b); scrollToBottom();
+    return b;
   }
 
   function sendChatMessage(inputEl) {
@@ -468,16 +526,59 @@
     chatMessages.push({ role: "user", content: text });
     appendBubble("user", text);
     showTyping();
-    chrome.runtime.sendMessage({ action: "askPage", mode: chatMode, pageContent: pageText, messages: chatMessages }, (res) => {
+
+    try {
+      const port = chrome.runtime.connect({ name: "ai-stream" });
+      let fullResponse = "";
+      let fullThought = "";
+      let bubble = null;
+      let hasReceivedData = false;
+
+      port.onMessage.addListener((msg) => {
+        if (msg.action === "chunk") {
+          hasReceivedData = true;
+          if (!bubble) {
+            hideTyping();
+            bubble = appendBubble("assistant", "");
+          }
+
+          if (msg.type === "thought") {
+            fullThought += msg.chunk;
+            const thoughtContainer = bubble.querySelector(".ai-chat-bubble-thought");
+            thoughtContainer.classList.remove("hidden");
+            thoughtContainer.querySelector(".ai-chat-thought-content").textContent = fullThought;
+          } else {
+            fullResponse += msg.chunk;
+            bubble.querySelector(".ai-chat-bubble-content").innerHTML = renderMarkdown(fullResponse);
+          }
+          scrollToBottom();
+        } else if (msg.action === "error") {
+          hideTyping();
+          appendBubble("assistant", "⚠️ Lỗi: " + msg.error);
+          port.disconnect();
+        } else if (msg.action === "done") {
+          if (!hasReceivedData) {
+            hideTyping();
+            appendBubble("assistant", "Không nhận được phản hồi từ AI.");
+          } else {
+            chatMessages.push({ role: "assistant", content: fullResponse });
+            saveChatHistory();
+          }
+          port.disconnect();
+        }
+      });
+
+      port.postMessage({ 
+        action: "askPage", 
+        mode: chatMode, 
+        pageContent: pageText, 
+        messages: chatMessages 
+      });
+
+    } catch (err) {
       hideTyping();
-      if (chrome.runtime.lastError || !res?.success) {
-        const err = res?.error || "Lỗi kết nối AI.";
-        chatMessages.push({ role: "assistant", content: err }); appendBubble("assistant", err);
-      } else {
-        chatMessages.push({ role: "assistant", content: res.answer }); appendBubble("assistant", res.answer);
-      }
-      saveChatHistory();
-    });
+      appendBubble("assistant", "Lỗi: " + err.message);
+    }
   }
 
   function showTyping() {
